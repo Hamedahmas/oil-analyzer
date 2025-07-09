@@ -14,7 +14,6 @@ def send_telegram_message(message):
     print("ارسال به تلگرام:", response.status_code)
 
 def fetch_oilprice_news():
-    base_url = "https://oilprice.com"
     news_url = "https://oilprice.com/latest-energy-news/world-news/"
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -22,20 +21,20 @@ def fetch_oilprice_news():
         res = requests.get(news_url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # ⚠️ این selector جدید طبق ساختار فعلی سایت است:
-        articles = soup.select("div.categoryArticle__content")
+        # گرفتن همه <a> هایی که داخلشون <h2 class="categoryArticle__title"> هست
+        articles = soup.select("a:has(h2.categoryArticle__title)")
 
         news_items = []
 
         for article in articles[:5]:
-            title_tag = article.select_one("a")
+            title_tag = article.select_one("h2.categoryArticle__title")
             if not title_tag:
                 continue
 
             title = title_tag.text.strip()
-            link = base_url + title_tag['href']
+            link = article['href']
 
-            # رفتن به صفحه خبر برای گرفتن متن کامل
+            # دریافت متن کامل خبر
             article_res = requests.get(link, headers=headers, timeout=10)
             article_soup = BeautifulSoup(article_res.text, "html.parser")
             paragraphs = article_soup.select(".article-content p")
@@ -47,7 +46,7 @@ def fetch_oilprice_news():
                 "content": content
             })
 
-            time.sleep(1)  # برای جلوگیری از بلاک شدن توسط سایت
+            time.sleep(1)  # جلوگیری از بلاک شدن
 
         return news_items
 
@@ -72,20 +71,16 @@ def main():
         return
 
     msg = f"🛢 تحلیل سریع بازار نفت\nتعداد تیتر بررسی‌شده: {len(news)}\n"
-
     sentiment_total = 0
 
     for item in news:
         sentiment = analyze_sentiment(item['content'])
         msg += f"\n📰 {item['title']}\n📊 احساس: {sentiment}\n🔗 {item['link']}\n"
-
-        # محاسبه امتیاز عددی سنتیمنت برای میانگین
         blob = TextBlob(item['content'])
         sentiment_total += blob.sentiment.polarity
 
     avg_sentiment = round(sentiment_total / len(news), 2)
     msg += f"\nامتیاز سنتیمنت میانگین: {avg_sentiment}"
-
     msg += "\n\n📡 سیستم تحلیل اتوماتیک | بروزرسانی هر 30 دقیقه"
 
     send_telegram_message(msg)
