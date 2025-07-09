@@ -2,66 +2,66 @@ import requests
 from bs4 import BeautifulSoup
 from textblob import TextBlob
 
+# تنظیمات ربات تلگرام
 TELEGRAM_TOKEN = "7754260268:AAE2JjAal8Di-qOTOUf0lBRN4FNNl3VrUo4"
 TELEGRAM_CHAT_ID = "-1002233437580"
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    response = requests.post(url, data=payload)
-    print("ارسال شد:", response.status_code)
+    try:
+        requests.post(url, data=payload)
+    except Exception as e:
+        print("خطا در ارسال به تلگرام:", e)
 
-def fetch_oilprice_news():
-    url = "https://oilprice.com/latest-energy-news/world-news/"
+def fetch_oil_headlines():
+    url = "https://oilprice.com/Latest-Energy-News/World-News/"
     headers = {"User-Agent": "Mozilla/5.0"}
-    res = requests.get(url, headers=headers, timeout=10)
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    articles = soup.select("div.categoryArticle")
-    news_items = []
-
-    for article in articles[:5]:  # حداکثر 5 خبر اول
-        title_tag = article.select_one("h2.categoryArticle__title")
-        link_tag = article.select_one("a[href]")
-        excerpt_tag = article.select_one("p.categoryArticle__excerpt")
-
-        if title_tag and link_tag:
-            title = title_tag.text.strip()
-            link = link_tag['href']
-            excerpt = excerpt_tag.text.strip() if excerpt_tag else ""
-
-            news_items.append({
-                "title": title,
-                "link": link,
-                "content": excerpt
-            })
-
-    return news_items
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.content, "html.parser")
+        headlines = []
+        for div in soup.find_all("div", class_="headline_row"):
+            title_span = div.find("span", class_="article_name")
+            link_tag = div.find("a", class_="full_parent")
+            if title_span and link_tag:
+                title = title_span.get_text(strip=True)
+                link = link_tag["href"]
+                headlines.append((title, link))
+        return headlines
+    except Exception as e:
+        print("خطا در دریافت اخبار:", e)
+        return []
 
 def analyze_sentiment(text):
     blob = TextBlob(text)
     polarity = blob.sentiment.polarity
-    return polarity
+    if polarity > 0.1:
+        return "مثبت ✅"
+    elif polarity < -0.1:
+        return "منفی ❌"
+    else:
+        return "خنثی ⚪️"
 
 def main():
-    news = fetch_oilprice_news()
-    if not news:
-        send_telegram_message("🛢 تحلیل سریع بازار نفت\nتعداد تیتر بررسی‌شده: 0\nامتیاز سنتیمنت: 0\n\n📌 تیترهای اصلی:\n- \n\n📡 سیستم تحلیل اتوماتیک | بروزرسانی هر 30 دقیقه")
+    headlines = fetch_oil_headlines()
+    if not headlines:
+        send_telegram_message("⛔️ هیچ خبری برای تحلیل پیدا نشد.")
         return
 
-    msg = f"🛢 تحلیل سریع بازار نفت\nتعداد تیتر بررسی‌شده: {len(news)}\n\n"
-    total_polarity = 0
+    message = f"🛢 تحلیل سریع بازار نفت\n\nتعداد تیتر بررسی‌شده: {len(headlines)}\n"
+    sentiment_score = 0
 
-    for item in news:
-        polarity = analyze_sentiment(item['content'])
-        total_polarity += polarity
-        sentiment_label = "مثبت ✅" if polarity > 0.1 else ("منفی ❌" if polarity < -0.1 else "خنثی ⚪️")
-        msg += f"📰 {item['title']}\n📊 احساس: {sentiment_label}\n🔗 {item['link']}\n\n"
+    for title, link in headlines[:5]:
+        sentiment = analyze_sentiment(title)
+        message += f"\n📰 {title}\n🔗 {link}\n📊 احساس: {sentiment}\n"
+        if sentiment == "مثبت ✅":
+            sentiment_score += 1
+        elif sentiment == "منفی ❌":
+            sentiment_score -= 1
 
-    avg_sentiment = round(total_polarity / len(news), 2)
-    msg += f"امتیاز سنتیمنت میانگین: {avg_sentiment}\n\n📡 سیستم تحلیل اتوماتیک | بروزرسانی هر 30 دقیقه"
-
-    send_telegram_message(msg)
+    message += f"\n📊 امتیاز سنتیمنت: {sentiment_score}\n\n📡 سیستم تحلیل اتوماتیک | بروزرسانی هر 30 دقیقه"
+    send_telegram_message(message)
 
 if __name__ == "__main__":
     main()
