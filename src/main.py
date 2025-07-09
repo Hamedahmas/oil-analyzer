@@ -3,18 +3,16 @@ from bs4 import BeautifulSoup
 from textblob import TextBlob
 import time
 
-# تنظیمات ربات تلگرام (توکن و چت آیدی کانال خصوصی)
+# ✅ تنظیمات تلگرام
 TELEGRAM_TOKEN = "7754260268:AAE2JjAal8Di-qOTOUf0lBRN4FNNl3VrUo4"
 TELEGRAM_CHAT_ID = "-1002233437580"
 
-# ارسال پیام به تلگرام
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     response = requests.post(url, data=payload)
-    print("Telegram:", response.status_code)
+    print("ارسال به تلگرام:", response.status_code)
 
-# دریافت آخرین خبرها از oilprice
 def fetch_oilprice_news():
     base_url = "https://oilprice.com"
     news_url = "https://oilprice.com/latest-energy-news/world-news/"
@@ -23,16 +21,21 @@ def fetch_oilprice_news():
     try:
         res = requests.get(news_url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
-        articles = soup.select(".categoryArticle")
+
+        # ⚠️ این selector جدید طبق ساختار فعلی سایت است:
+        articles = soup.select("div.categoryArticle__content")
+
         news_items = []
 
         for article in articles[:5]:
-            title_tag = article.select_one("h4 a")
+            title_tag = article.select_one("a")
             if not title_tag:
                 continue
-            title = title_tag.text.strip()
-            link = base_url + title_tag["href"]
 
+            title = title_tag.text.strip()
+            link = base_url + title_tag['href']
+
+            # رفتن به صفحه خبر برای گرفتن متن کامل
             article_res = requests.get(link, headers=headers, timeout=10)
             article_soup = BeautifulSoup(article_res.text, "html.parser")
             paragraphs = article_soup.select(".article-content p")
@@ -43,7 +46,8 @@ def fetch_oilprice_news():
                 "link": link,
                 "content": content
             })
-            time.sleep(1)
+
+            time.sleep(1)  # برای جلوگیری از بلاک شدن توسط سایت
 
         return news_items
 
@@ -51,7 +55,6 @@ def fetch_oilprice_news():
         print("خطا در دریافت خبر:", e)
         return []
 
-# تحلیل احساسات متن خبر
 def analyze_sentiment(text):
     blob = TextBlob(text)
     polarity = blob.sentiment.polarity
@@ -62,17 +65,28 @@ def analyze_sentiment(text):
     else:
         return "خنثی ⚪️"
 
-# اجرای اصلی
 def main():
     news = fetch_oilprice_news()
     if not news:
-        send_telegram_message("⛔️ هیچ خبری برای تحلیل پیدا نشد.")
+        send_telegram_message("🛢 تحلیل سریع بازار نفت\nتعداد تیتر بررسی‌شده: 0\nامتیاز سنتیمنت: 0\n\n📡 سیستم تحلیل اتوماتیک | بروزرسانی هر 30 دقیقه")
         return
 
-    msg = f"📡 تحلیل {len(news)} خبر از OilPrice:\n"
+    msg = f"🛢 تحلیل سریع بازار نفت\nتعداد تیتر بررسی‌شده: {len(news)}\n"
+
+    sentiment_total = 0
+
     for item in news:
-        sentiment = analyze_sentiment(item["content"])
-        msg += f"\n📰 {item['title']}\n🔗 {item['link']}\n📊 احساس: {sentiment}\n"
+        sentiment = analyze_sentiment(item['content'])
+        msg += f"\n📰 {item['title']}\n📊 احساس: {sentiment}\n🔗 {item['link']}\n"
+
+        # محاسبه امتیاز عددی سنتیمنت برای میانگین
+        blob = TextBlob(item['content'])
+        sentiment_total += blob.sentiment.polarity
+
+    avg_sentiment = round(sentiment_total / len(news), 2)
+    msg += f"\nامتیاز سنتیمنت میانگین: {avg_sentiment}"
+
+    msg += "\n\n📡 سیستم تحلیل اتوماتیک | بروزرسانی هر 30 دقیقه"
 
     send_telegram_message(msg)
 
